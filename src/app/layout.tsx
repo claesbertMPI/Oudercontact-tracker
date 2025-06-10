@@ -1,7 +1,7 @@
 // src/app/layout.tsx
 
-import { SessionProvider } from "next-auth/react";
 import LoginButton from "@/components/LoginButton";
+import { Providers } from "./providers";
 
 export const metadata = {
   title: "Oudercontact Tracker",
@@ -16,13 +16,13 @@ export default function RootLayout({
   return (
     <html lang="nl">
       <body>
-        {/* SessionProvider om useSession() en signIn/signOut te laten werken */}
-        <SessionProvider>
+        {/* Providers is a Client Component, so we can safely use SessionProvider inside it */}
+        <Providers>
           <header className="p-4 border-b flex justify-end">
             <LoginButton />
           </header>
           <main>{children}</main>
-        </SessionProvider>
+        </Providers>
       </body>
     </html>
   );

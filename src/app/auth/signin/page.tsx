@@ -1,30 +1,16 @@
 // src/app/auth/signin/page.tsx
-"use client";
 
-import { signIn, useSession } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import SignInClient from "./SignInClient";
 
-export default function SignInPage() {
-  const { data: session } = useSession();
-  const router = useRouter();
-  const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") || "/";
-
-  // Als al ingelogd, direct doorsturen
-  if (session) {
-    router.push(callbackUrl);
-    return null;
-  }
+export default function SignInPage(_props: unknown) {
+  // Cast _props into the shape Next.js actually passes us:
+  const { searchParams } = _props as { searchParams: { callbackUrl?: string } };
+  const callbackUrl = searchParams.callbackUrl ?? "/";
 
   return (
-    <div className="p-8 max-w-md mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-4">Inloggen met Google</h1>
-      <button
-        onClick={() => signIn("google", { callbackUrl })}
-        className="px-4 py-2 bg-blue-600 text-white rounded"
-      >
-        Inloggen met @mpikompas.be
-      </button>
+    <div className="p-8 flex flex-col items-center">
+      <h1 className="text-2xl font-bold mb-6">Inloggen met Google</h1>
+      <SignInClient callbackUrl={callbackUrl} />
     </div>
   );
 }
