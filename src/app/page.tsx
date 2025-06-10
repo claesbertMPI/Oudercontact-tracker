@@ -1,10 +1,21 @@
+// src/app/page.tsx
+import Link from "next/link";   
+
+import { getServerSession } from "next-auth/next";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import Link from "next/link";
 
 export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect("/login");
+  }
+
   const laatsteOudercontact = await prisma.oudercontact.findFirst({
     orderBy: { date: "desc" },
   });
+
 
   return (
     <main className="p-8 max-w-xl mx-auto space-y-6">

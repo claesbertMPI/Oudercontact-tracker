@@ -1,11 +1,28 @@
-import "./globals.css";
-import SessionWrapper from "@/components/SessionWrapper"; // gebruik alias '@' → staat goed door jouw install
+// src/app/layout.tsx
+import './globals.css';
+import LoginButton from "@/components/LoginButton";
+import { Providers } from "./providers";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const metadata = {
+  title: "Oudercontact Tracker",
+  description: "Beheer oudercontacten",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="nl">
       <body>
-        <SessionWrapper>{children}</SessionWrapper>
+        {/* Providers is a Client Component, so we can safely use SessionProvider inside it */}
+        <Providers>
+          <header className="p-4 border-b flex justify-end">
+            <LoginButton />
+          </header>
+          <main>{children}</main>
+        </Providers>
       </body>
     </html>
   );
