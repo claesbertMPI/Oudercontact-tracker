@@ -1,9 +1,19 @@
 "use client";
 
+
+
 import { useEffect, useState } from "react";
 
+type Oudercontact = {
+  id: number;
+  title: string;
+  date: string; // of Date, afhankelijk van je fetch
+  schoolYear: string;
+};
+
+
 export default function OudercontactBeheerPage() {
-  const [oudercontacten, setOudercontacten] = useState<any[]>([]);
+  const [oudercontacten, setOudercontacten] = useState<Oudercontact[]>([]);
   const [form, setForm] = useState({
     title: "",
     date: "",
@@ -82,7 +92,7 @@ export default function OudercontactBeheerPage() {
         </button>
       </form>
 
-0~<h2 className="text-xl font-semibold mb-2">📋 Bestaande oudercontacten</h2>
+<h2 className="text-xl font-semibold mb-2">📋 Bestaande oudercontacten</h2>
 <ul className="space-y-2">
   {oudercontacten.map((oc) => (
     <li key={oc.id} className="border p-2 rounded flex justify-between items-center">

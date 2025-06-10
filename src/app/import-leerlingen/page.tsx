@@ -19,7 +19,8 @@ export default function ImportLeerlingenPage() {
       } else {
         setResult(`Fout: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
+
       setResult("⚠ Er ging iets mis bij het ophalen.");
     }
 

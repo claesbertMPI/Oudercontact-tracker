@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: NextRequest, context: { params: { oudercontactId: string } }) {
-  const oudercontactId = parseInt(context.params.oudercontactId, 10);
-  const body = await req.json();
-  const { studentId, present, comment } = body;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function POST(req: NextRequest, { params }: { params: any }) {
+  const oudercontactId = parseInt(params.oudercontactId, 10);
+
+  const { studentId, present, comment } = await req.json();
 
   const result = await prisma.attendance.upsert({
     where: {
@@ -25,5 +26,5 @@ export async function POST(req: NextRequest, context: { params: { oudercontactId
     },
   });
 
-  return Response.json({ status: "ok", result });
+  return NextResponse.json({ status: "ok", result });
 }
