@@ -1,5 +1,5 @@
 // src/app/layout.tsx
-
+import './globals.css';
 import LoginButton from "@/components/LoginButton";
 import { Providers } from "./providers";
 
