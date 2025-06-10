@@ -1,30 +1,26 @@
+import { NextResponse, NextRequest } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function POST(req: NextRequest, { params }: { params: any }) {
-  const oudercontactId = parseInt(params.oudercontactId, 10);
+export async function POST(req: NextRequest, context: { params: Record<string, string> }) {
+  // 1) pak params wél pas hier
+  const oudercontactId = parseInt(context.params.oudercontactId, 10);
 
+  // 2) sessie-check (anders mag niemand data schrijven)
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return new NextResponse("Not authenticated", { status: 401 });
+  }
+
+  // 3) verwerk de payload
   const { studentId, present, comment } = await req.json();
 
-  const result = await prisma.attendance.upsert({
-    where: {
-      studentId_oudercontactId: {
-        studentId,
-        oudercontactId,
-      },
-    },
-    update: {
-      present,
-      comment,
-    },
-    create: {
-      studentId,
-      oudercontactId,
-      present,
-      comment,
-    },
+  await prisma.attendance.upsert({
+    where: { oudercontactId_studentId: { oudercontactId, studentId } },
+    update: { present, comment },
+    create: { oudercontactId, studentId, present, comment },
   });
 
-  return NextResponse.json({ status: "ok", result });
+  return NextResponse.json({ success: true });
 }
