@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function GET(req: NextRequest, context: any) {
-  const oudercontactId = parseInt(context.params.oudercontactId, 10);
+export async function GET(req: NextRequest, context: { params: { oudercontactId: string } }) {
+  // Wacht op de params om zeker te zijn dat oudercontactId beschikbaar is
+  const { oudercontactId: oudercontactIdString } = await context.params;
+  const oudercontactId = parseInt(oudercontactIdString, 10);
 
   const leerlingen = await prisma.student.findMany();
   const aanwezigheden = await prisma.attendance.findMany({
