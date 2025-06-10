@@ -15,4 +15,5 @@ Een Next.js-applicatie waarmee je oudercontactmomenten kunt beheren en aanwezigh
 ```bash
 git clone https://github.com/<jouw-gebruikersnaam>/Oudercontact-tracker.git
 cd Oudercontact-tracker
+copy .env.example to .env.local and add data
 npm install
