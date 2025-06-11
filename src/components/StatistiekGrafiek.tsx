@@ -1,3 +1,4 @@
+// src/components/StatistiekGrafiek.tsx
 "use client";
 
 import {
@@ -23,7 +24,11 @@ export default function StatistiekGrafiek({ data }: { data: GrafiekData[] }) {
         <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
         <Tooltip formatter={(value: number) => `${value}%`} />
         <Bar dataKey="percentage" fill="#3182CE">
-          <LabelList dataKey="percentage" position="top" formatter={(v: number) => `${v}%`} />
+          <LabelList
+            dataKey="percentage"
+            position="top"
+            formatter={(v: number) => `${v}%`}
+          />
         </Bar>
       </BarChart>
     </ResponsiveContainer>

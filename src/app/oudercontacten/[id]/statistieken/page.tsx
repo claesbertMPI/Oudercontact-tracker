@@ -1,7 +1,7 @@
 // src/app/oudercontacten/[id]/statistieken/page.tsx
 
 import { prisma } from "@/lib/prisma";
-import StatistiekGrafiek from "./StatistiekGrafiek";
+import StatistiekGrafiek from "@/components/StatistiekGrafiek";
 
 export default async function StatistiekPage(_props: unknown) {
   // Cast om binding-element 'params' van type any te vermijden

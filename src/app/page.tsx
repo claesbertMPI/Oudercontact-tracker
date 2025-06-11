@@ -1,57 +1,48 @@
 // src/app/page.tsx
-import Link from "next/link";   
 
+import Link from "next/link";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
+  // 1) Guard: if not logged in, send to /login
   const session = await getServerSession(authOptions);
   if (!session) {
     redirect("/login");
   }
 
-  const laatsteOudercontact = await prisma.oudercontact.findFirst({
-    orderBy: { date: "desc" },
-  });
-
+  // 2) Pull out the user’s email
+  const email = session.user?.email;
 
   return (
     <main className="p-8 max-w-xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">👋 Welkom bij de oudercontacttracker</h1>
+      <h1 className="text-3xl font-bold">Oudercontact Tracker</h1>
 
-      <div className="grid gap-4">
+      <nav className="space-y-2">
+        <Link
+          href="/oudercontacten/statistieken"
+          className="block text-blue-600 hover:underline"
+        >
+          📊 Statistieken
+        </Link>
+
         <Link
           href="/oudercontacten"
-          className="block bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded text-center font-semibold"
+          className="block text-blue-600 hover:underline"
         >
           📋 Overzicht oudercontacten
         </Link>
 
-        <Link
-          href="/oudercontacten/beheer"
-          className="block bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded text-center font-semibold"
-        >
-          ➕ Beheer oudercontactmomenten
-        </Link>
-
-        <Link
-          href="/statistieken"
-          className="block bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded text-center font-semibold"
-        >
-          📊 Statistieken per oudercontact
-        </Link>
-
-        {laatsteOudercontact && (
+        {email === "bert.claes@mpikompas.be" && (
           <Link
-            href={`/oudercontacten/${laatsteOudercontact.id}`}
-            className="block bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded text-center font-semibold"
+            href="/oudercontacten/beheer"
+            className="block text-red-600 hover:underline font-semibold"
           >
-            ✅ Laatste checklist: {laatsteOudercontact.title}
+            🛠️ Admin
           </Link>
         )}
-      </div>
+      </nav>
     </main>
   );
 }
