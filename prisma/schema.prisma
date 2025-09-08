@@ -8,34 +8,55 @@ datasource db {
 }
 
 model Student {
-  id         Int      @id @default(autoincrement())
-  firstName  String
-  lastName   String
-  class      String
-  attendances Attendance[]
- 
-  @@unique([firstName, lastName, class])
+  id             Int    @id @default(autoincrement())
+  leerlingnummer String @unique
+  firstName      String
+  lastName       String
 
+  classId Int?
+  class   Class? @relation(fields: [classId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lastName, firstName])
+  @@index([classId])
+}
+
+model Class {
+  id       Int       @id @default(autoincrement())
+  code     String    @unique
+  naam     String?
+  students Student[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Oudercontact {
-  id         Int         @id @default(autoincrement())
-  title      String
-  date       DateTime
-  schoolYear String
-  period     String
+  id          Int          @id @default(autoincrement())
+  title       String
+  date        DateTime
+  schoolYear  String
+  period      String
   attendances Attendance[]
 }
 
 model Attendance {
-  id             Int           @id @default(autoincrement())
-  student        Student       @relation(fields: [studentId], references: [id])
+  id             Int @id @default(autoincrement())
   studentId      Int
-  oudercontact   Oudercontact  @relation(fields: [oudercontactId], references: [id])
   oudercontactId Int
-  present        Boolean
-  comment        String?
-  createdAt      DateTime      @default(now())
+
+  student      Student      @relation(fields: [studentId], references: [id])
+  oudercontact Oudercontact @relation(fields: [oudercontactId], references: [id])
+
+  present   Boolean
+  comment   String?
+  createdAt DateTime @default(now())
 
   @@unique([studentId, oudercontactId])
+  @@index([studentId])
+  @@index([oudercontactId])
 }
