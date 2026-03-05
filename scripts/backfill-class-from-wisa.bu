@@ -1,0 +1,48 @@
+import { PrismaClient } from '@prisma/client'
+import fs from 'fs'
+import { parse } from 'csv-parse/sync'
+
+const prisma = new PrismaClient()
+
+// Pas dit aan naar je export-bestand
+const CSV_PATH = 'wisa_students.csv' 
+// Verwacht kolommen zoals: LEERLINGNUMMER (of leerlingnummer), KL_CODE (en optioneel KL_NAAM)
+
+function klasCode(v: any) {
+  return String(v ?? '').slice(0, 4).toUpperCase()
+}
+function pick(...vals: any[]) {
+  for (const v of vals) if (v != null && String(v).trim() !== '') return String(v).trim()
+  return ''
+}
+
+async function main() {
+  const csv = fs.readFileSync(CSV_PATH, 'utf8')
+  const rows = parse(csv, { columns: true, skip_empty_lines: true })
+
+  for (const r of rows) {
+    const leerlingnummer = pick(r.LEERLINGNUMMER, r.leerlingnummer, r.LE_ID, r.ID)
+    if (!leerlingnummer) continue
+
+    const code = klasCode(pick(r.KL_CODE, r.klasCode, r.klascode))
+    if (!code) continue
+    const naam = pick(r.KL_NAAM, r.klasNaam) || code
+
+    // Zorg dat de klas bestaat
+    const klas = await prisma.class.upsert({
+      where: { code },
+      update: { naam },
+      create: { code, naam },
+    })
+
+    // Koppel student op leerlingnummer
+    await prisma.student.updateMany({
+      where: { leerlingnummer },
+      data: { classId: klas.id },
+    })
+  }
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch(async e => { console.error(e); await prisma.$disconnect(); process.exit(1) })

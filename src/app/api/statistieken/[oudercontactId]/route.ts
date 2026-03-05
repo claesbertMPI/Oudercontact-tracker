@@ -1,77 +1,133 @@
-// src/app/api/statistieken/[oudercontactId]/route.ts
-
-import { NextResponse, NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(
-  req: NextRequest,
-  context: { params: Promise<{ oudercontactId: string }> }
-) {
-  // ● await the params-Promise itself
-  const paramsObj = await context.params;
-  const oudercontactId = parseInt(paramsObj.oudercontactId, 10);
+export const dynamic = "force-dynamic";
 
-  // ● session guard
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return new NextResponse("Not authenticated", { status: 401 });
-  }
+type Stat = {
+  totaal: number;
+  fysiekAanwezig: number;
+  telefonischOnline: number;
+  afwezig: number;
+  opvangGebruikt: number;
+  present: number; // fysiek || tel
+};
 
-  // ● fetch data
-  const leerlingen = await prisma.student.findMany();
-  const aanwezigheden = await prisma.attendance.findMany({
-    where: { oudercontactId },
-  });
+function err(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
 
-  // ● build stats
-  const perKlas: Record<string, { totaal: number; aanwezig: number }> = {};
-  const perWijzer: Record<string, { totaal: number; aanwezig: number }> = {};
-
-  for (const leerling of leerlingen) {
-    const klas = leerling.class;
-    const wijzer = klas.slice(0, 3);
-
-    perKlas[klas] ??= { totaal: 0, aanwezig: 0 };
-    perWijzer[wijzer] ??= { totaal: 0, aanwezig: 0 };
-
-    perKlas[klas].totaal++;
-    perWijzer[wijzer].totaal++;
-
-    if (
-      aanwezigheden.some(
-        (a) => a.studentId === leerling.id && a.present
-      )
-    ) {
-      perKlas[klas].aanwezig++;
-      perWijzer[wijzer].aanwezig++;
+export async function GET(request: Request) {
+  try {
+    // Parse oudercontactId uit pad
+    const { pathname } = new URL(request.url);
+    const parts = pathname.split("/").filter(Boolean);
+    const idStr = parts[parts.length - 1];
+    const oudercontactId = Number(idStr);
+    if (!Number.isInteger(oudercontactId)) {
+      return NextResponse.json({ error: "Ongeldig oudercontactId" }, { status: 400 });
     }
+
+    // Leerlingen met klascode
+    const leerlingen = await prisma.student.findMany({
+      select: { id: true, class: { select: { code: true } } },
+    });
+
+    // Aanwezigheden voor dit oudercontact (nieuwe flags)
+    const rows = await prisma.attendance.findMany({
+      where: { oudercontactId },
+      select: {
+        studentId: true,
+        fysiekAanwezig: true,
+        telefonischOnline: true,
+        afwezig: true,
+        opvangGebruikt: true,
+      },
+    });
+
+    // Map van studentId -> flags
+    const byStudent = new Map<number, {
+      fysiekAanwezig: boolean;
+      telefonischOnline: boolean;
+      afwezig: boolean;
+      opvangGebruikt: boolean;
+    }>();
+    for (const r of rows) {
+      // Normaliseer exclusiviteit
+      let f = !!r.fysiekAanwezig;
+      let t = !!r.telefonischOnline;
+      let a = !!r.afwezig;
+      if (a) { f = false; t = false; }
+      else if (f) { t = false; }
+      byStudent.set(r.studentId, {
+        fysiekAanwezig: f,
+        telefonischOnline: t,
+        afwezig: a,
+        opvangGebruikt: !!r.opvangGebruikt,
+      });
+    }
+
+    const emptyStat = (): Stat => ({
+      totaal: 0,
+      fysiekAanwezig: 0,
+      telefonischOnline: 0,
+      afwezig: 0,
+      opvangGebruikt: 0,
+      present: 0,
+    });
+
+    const perKlas: Record<string, Stat> = Object.create(null);
+    const perWijzer: Record<string, Stat> = Object.create(null);
+    const totaal: Stat = emptyStat();
+
+    for (const l of leerlingen) {
+      const code = l.class?.code?.toUpperCase() ?? "—";
+      const wijzer = code.slice(0, 3);
+
+      perKlas[code] ??= emptyStat();
+      perWijzer[wijzer] ??= emptyStat();
+
+      const flags = byStudent.get(l.id) ?? {
+        fysiekAanwezig: false,
+        telefonischOnline: false,
+        afwezig: false,
+        opvangGebruikt: false,
+      };
+      const present = flags.fysiekAanwezig || flags.telefonischOnline;
+
+      // totaal
+      totaal.totaal += 1;
+      totaal.fysiekAanwezig += flags.fysiekAanwezig ? 1 : 0;
+      totaal.telefonischOnline += flags.telefonischOnline ? 1 : 0;
+      totaal.afwezig += flags.afwezig ? 1 : 0;
+      totaal.opvangGebruikt += flags.opvangGebruikt ? 1 : 0;
+      totaal.present += present ? 1 : 0;
+
+      // per klas
+      const k = perKlas[code];
+      k.totaal += 1;
+      k.fysiekAanwezig += flags.fysiekAanwezig ? 1 : 0;
+      k.telefonischOnline += flags.telefonischOnline ? 1 : 0;
+      k.afwezig += flags.afwezig ? 1 : 0;
+      k.opvangGebruikt += flags.opvangGebruikt ? 1 : 0;
+      k.present += present ? 1 : 0;
+
+      // per wijzer
+      const w = perWijzer[wijzer];
+      w.totaal += 1;
+      w.fysiekAanwezig += flags.fysiekAanwezig ? 1 : 0;
+      w.telefonischOnline += flags.telefonischOnline ? 1 : 0;
+      w.afwezig += flags.afwezig ? 1 : 0;
+      w.opvangGebruikt += flags.opvangGebruikt ? 1 : 0;
+      w.present += present ? 1 : 0;
+    }
+
+    return NextResponse.json({
+      oudercontactId,
+      totaal,
+      perKlas,
+      perWijzer,
+    });
+  } catch (e) {
+    return NextResponse.json({ error: err(e) }, { status: 500 });
   }
-
-  // ● transform to arrays with percentages
-  const perKlasArray = Object.entries(perKlas).map(
-    ([klas, stats]) => ({
-      klas,
-      ...stats,
-      percentage: stats.totaal
-        ? Math.round((stats.aanwezig / stats.totaal) * 100)
-        : 0,
-    })
-  );
-  const perWijzerArray = Object.entries(perWijzer).map(
-    ([wijzer, stats]) => ({
-      wijzer,
-      ...stats,
-      percentage: stats.totaal
-        ? Math.round((stats.aanwezig / stats.totaal) * 100)
-        : 0,
-    })
-  );
-
-  // ● return the JSON
-  return NextResponse.json({
-    perKlas: perKlasArray,
-    perWijzer: perWijzerArray,
-  });
 }

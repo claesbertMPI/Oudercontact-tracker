@@ -1,102 +1,120 @@
-// src/app/api/statistieken/route.ts
-
-import { NextResponse, NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(req: NextRequest) {
-  // 1) Sessies beschermen
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return new NextResponse("Not authenticated", { status: 401 });
-  }
+export const dynamic = "force-dynamic";
 
-  // 2) Payload uitlezen
-  const { oudercontactIds } = (await req.json()) as { oudercontactIds: number[] };
-  if (!Array.isArray(oudercontactIds) || oudercontactIds.length === 0) {
-    return NextResponse.json({ perKlas: [], perWijzer: [] });
-  }
+type Flags = {
+  fysiekAanwezig: boolean;
+  telefonischOnline: boolean;
+  afwezig: boolean;
+  opvangGebruikt: boolean;
+};
+type Stat = {
+  totaal: number;
+  fysiekAanwezig: number;
+  telefonischOnline: number;
+  afwezig: number;
+  opvangGebruikt: number;
+  present: number; // fysiek || tel
+};
 
-  // 3) Alle leerlingen ophalen
-  const leerlingen = await prisma.student.findMany();
+function err(e: unknown) { return e instanceof Error ? e.message : String(e); }
 
-  // 4) Voor elke oudercontact id per klas en per wijzer stats verzamelen
-  const klasStatsPerEvent: Record<
-    string,
-    { aanwezig: number; totaal: number }[]
-  > = {};
-  const wijzerStatsPerEvent: Record<
-    string,
-    { aanwezig: number; totaal: number }[]
-  > = {};
+async function computeStats(oudercontactId?: number) {
+  // Leerlingen met klascode
+  const leerlingen = await prisma.student.findMany({
+    select: { id: true, class: { select: { code: true } } },
+  });
 
-  for (const ocId of oudercontactIds) {
-    const aanwezigheden = await prisma.attendance.findMany({
-      where: { oudercontactId: ocId },
+  // Rows voor dit oudercontact (of leeg)
+  const rows = oudercontactId
+    ? await prisma.attendance.findMany({
+        where: { oudercontactId },
+        select: {
+          studentId: true,
+          fysiekAanwezig: true,
+          telefonischOnline: true,
+          afwezig: true,
+          opvangGebruikt: true,
+        },
+      })
+    : [];
+
+  const byStudent = new Map<number, Flags>();
+  for (const r of rows) {
+    let f = !!r.fysiekAanwezig;
+    let t = !!r.telefonischOnline;
+    let a = !!r.afwezig;
+    if (a) { f = false; t = false; } else if (f) { t = false; }
+    byStudent.set(r.studentId, {
+      fysiekAanwezig: f,
+      telefonischOnline: t,
+      afwezig: a,
+      opvangGebruikt: !!r.opvangGebruikt,
     });
-
-    // Per klas en per wijzer tijdelijke teller
-    const tempKlas: Record<string, { aanwezig: number; totaal: number }> = {};
-    const tempWijzer: Record<string, { aanwezig: number; totaal: number }> = {};
-
-    for (const leerling of leerlingen) {
-      const klas = leerling.class;
-      const wijzer = klas.slice(0, 3);
-
-      tempKlas[klas] ??= { aanwezig: 0, totaal: 0 };
-      tempWijzer[wijzer] ??= { aanwezig: 0, totaal: 0 };
-
-      tempKlas[klas].totaal++;
-      tempWijzer[wijzer].totaal++;
-
-      if (
-        aanwezigheden.some(
-          (a) => a.studentId === leerling.id && a.present
-        )
-      ) {
-        tempKlas[klas].aanwezig++;
-        tempWijzer[wijzer].aanwezig++;
-      }
-    }
-
-    // Opslaan in de per-event arrays
-    for (const [klas, stats] of Object.entries(tempKlas)) {
-      klasStatsPerEvent[klas] ??= [];
-      klasStatsPerEvent[klas].push(stats);
-    }
-    for (const [wijzer, stats] of Object.entries(tempWijzer)) {
-      wijzerStatsPerEvent[wijzer] ??= [];
-      wijzerStatsPerEvent[wijzer].push(stats);
-    }
   }
 
-  // 5) Gemiddelde berekenen per klas
-  const perKlas = Object.entries(klasStatsPerEvent).map(
-    ([klas, statsArr]) => {
-      const sumPerc = statsArr.reduce(
-        (sum, { aanwezig, totaal }) =>
-          sum + (totaal > 0 ? (aanwezig / totaal) * 100 : 0),
-        0
-      );
-      const avg = statsArr.length ? sumPerc / statsArr.length : 0;
-      return { klas, percentage: Math.round(avg) };
-    }
-  );
+  const empty = (): Stat => ({
+    totaal: 0, fysiekAanwezig: 0, telefonischOnline: 0, afwezig: 0, opvangGebruikt: 0, present: 0,
+  });
 
-  // 6) Gemiddelde berekenen per wijzer
-  const perWijzer = Object.entries(wijzerStatsPerEvent).map(
-    ([wijzer, statsArr]) => {
-      const sumPerc = statsArr.reduce(
-        (sum, { aanwezig, totaal }) =>
-          sum + (totaal > 0 ? (aanwezig / totaal) * 100 : 0),
-        0
-      );
-      const avg = statsArr.length ? sumPerc / statsArr.length : 0;
-      return { wijzer, percentage: Math.round(avg) };
-    }
-  );
+  const perKlas: Record<string, Stat> = Object.create(null);
+  const perWijzer: Record<string, Stat> = Object.create(null);
+  const totaal: Stat = empty();
 
-  // 7) Antwoord teruggeven
-  return NextResponse.json({ perKlas, perWijzer });
+  for (const l of leerlingen) {
+    const code = l.class?.code?.toUpperCase() ?? "—";
+    const wijzer = code.slice(0, 3);
+    perKlas[code] ??= empty();
+    perWijzer[wijzer] ??= empty();
+
+    const flags = byStudent.get(l.id) ?? {
+      fysiekAanwezig: false, telefonischOnline: false, afwezig: false, opvangGebruikt: false,
+    };
+    const present = flags.fysiekAanwezig || flags.telefonischOnline;
+
+    const bump = (s: Stat) => {
+      s.totaal += 1;
+      s.fysiekAanwezig += flags.fysiekAanwezig ? 1 : 0;
+      s.telefonischOnline += flags.telefonischOnline ? 1 : 0;
+      s.afwezig += flags.afwezig ? 1 : 0;
+      s.opvangGebruikt += flags.opvangGebruikt ? 1 : 0;
+      s.present += present ? 1 : 0;
+    };
+
+    bump(totaal);
+    bump(perKlas[code]);
+    bump(perWijzer[wijzer]);
+  }
+
+  return { oudercontactId: oudercontactId ?? null, totaal, perKlas, perWijzer };
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const oc = searchParams.get("oudercontactId");
+    const oudercontactId = oc ? Number(oc) : undefined;
+    if (oc && !Number.isInteger(oudercontactId)) {
+      return NextResponse.json({ error: "oudercontactId moet een integer zijn" }, { status: 400 });
+    }
+    const data = await computeStats(oudercontactId);
+    return NextResponse.json(data);
+  } catch (e) {
+    return NextResponse.json({ error: err(e) }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json().catch(() => null)) as { oudercontactId?: unknown } | null;
+    const oudercontactId = body?.oudercontactId !== undefined ? Number(body.oudercontactId) : undefined;
+    if (body?.oudercontactId !== undefined && !Number.isInteger(oudercontactId)) {
+      return NextResponse.json({ error: "oudercontactId moet een integer zijn" }, { status: 400 });
+    }
+    const data = await computeStats(oudercontactId);
+    return NextResponse.json(data);
+  } catch (e) {
+    return NextResponse.json({ error: err(e) }, { status: 500 });
+  }
 }

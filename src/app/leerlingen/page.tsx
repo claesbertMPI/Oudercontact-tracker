@@ -1,35 +1,44 @@
 import { prisma } from "@/lib/prisma";
 
-export default async function LeerlingenPage() {
+export default async function Page() {
   const leerlingen = await prisma.student.findMany({
     orderBy: [
-      { class: "asc" },
+      { class: { code: "asc" } }, // ✅ relation ordering
       { lastName: "asc" },
       { firstName: "asc" },
     ],
+    include: {
+      class: { select: { id: true, code: true, naam: true } }, // handig voor de UI
+    },
   });
 
   return (
-    <main className="p-8 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">📋 Leerlingenlijst</h1>
-      <table className="w-full border-collapse border border-gray-300">
-        <thead className="bg-gray-100">
+    <div className="mx-auto max-w-5xl">
+      <h1 className="text-xl font-semibold mb-4">Leerlingen</h1>
+      <table className="min-w-full text-sm">
+        <thead>
           <tr>
-            <th className="border p-2 text-left">Klas</th>
-            <th className="border p-2 text-left">Naam</th>
+            <th className="text-left p-2">Klas</th>
+            <th className="text-left p-2">Naam</th>
           </tr>
         </thead>
         <tbody>
-          {leerlingen.map((leerling) => (
-            <tr key={leerling.id}>
-              <td className="border p-2">{leerling.class}</td>
-              <td className="border p-2">
-                {leerling.firstName} {leerling.lastName}
+          {leerlingen.map((l) => (
+            <tr key={l.id} className="border-t">
+              <td className="p-2">
+                <span className="font-medium">{l.class?.code ?? "—"}</span>
+                {l.class?.naam &&
+                  l.class.naam.trim().toUpperCase() !== (l.class.code ?? "").toUpperCase() && (
+                    <span className="ml-1 text-xs text-slate-500">— {l.class.naam}</span>
+                  )}
+              </td>
+              <td className="p-2">
+                {l.lastName} {l.firstName}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </main>
+    </div>
   );
 }

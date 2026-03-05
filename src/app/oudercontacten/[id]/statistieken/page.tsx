@@ -1,115 +1,158 @@
-// src/app/oudercontacten/[id]/statistieken/page.tsx
-
 import { prisma } from "@/lib/prisma";
-import StatistiekGrafiek from "@/components/StatistiekGrafiek";
 
-export default async function StatistiekPage(_props: unknown) {
-  // Cast om binding-element 'params' van type any te vermijden
-  const { params } = _props as { params: { id: string } };
-  const oudercontactId = parseInt(params.id, 10);
+type Stat = {
+  totaal: number;
+  fysiekAanwezig: number;
+  telefonischOnline: number;
+  afwezig: number;
+  opvangGebruikt: number;
+  present: number;
+};
 
-  if (isNaN(oudercontactId)) {
-    return (
-      <div className="p-8 text-red-600">
-        ❌ Ongeldig oudercontact-ID: <code>{params.id}</code>
-      </div>
-    );
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const oudercontactId = Number(id);
+
+  // Data ophalen
+  const [leerlingen, rows] = await Promise.all([
+    prisma.student.findMany({
+      select: { id: true, class: { select: { code: true } } },
+    }),
+    prisma.attendance.findMany({
+      where: { oudercontactId },
+      select: {
+        studentId: true,
+        fysiekAanwezig: true,
+        telefonischOnline: true,
+        afwezig: true,
+        opvangGebruikt: true,
+      },
+    }),
+  ]);
+
+  // Map met genormaliseerde flags
+  const byStudent = new Map<number, {
+    fysiekAanwezig: boolean;
+    telefonischOnline: boolean;
+    afwezig: boolean;
+    opvangGebruikt: boolean;
+  }>();
+  for (const r of rows) {
+    let f = !!r.fysiekAanwezig;
+    let t = !!r.telefonischOnline;
+    let a = !!r.afwezig;
+    if (a) { f = false; t = false; }
+    else if (f) { t = false; }
+    byStudent.set(r.studentId, {
+      fysiekAanwezig: f,
+      telefonischOnline: t,
+      afwezig: a,
+      opvangGebruikt: !!r.opvangGebruikt,
+    });
   }
 
-  // Haal alle leerlingen én aanwezigen op voor dit oudercontact
-  const leerlingen = await prisma.student.findMany();
-  const aanwezigheden = await prisma.attendance.findMany({
-    where: { oudercontactId },
+  const empty = (): Stat => ({
+    totaal: 0,
+    fysiekAanwezig: 0,
+    telefonischOnline: 0,
+    afwezig: 0,
+    opvangGebruikt: 0,
+    present: 0,
   });
 
-  // Bouw per-klas en per-wijzer statistieken
-  const perKlas: Record<string, { totaal: number; aanwezig: number }> = {};
-  const perWijzer: Record<string, { totaal: number; aanwezig: number }> = {};
+  const perKlas: Record<string, Stat> = Object.create(null);
+  const perWijzer: Record<string, Stat> = Object.create(null);
+  const totaal: Stat = empty();
 
-  for (const leerling of leerlingen) {
-    const klas = leerling.class;
-    const wijzer = klas.slice(0, 3);
+  for (const l of leerlingen) {
+    const code = l.class?.code?.toUpperCase() ?? "—";
+    const wijzer = code.slice(0, 3);
+    perKlas[code] ??= empty();
+    perWijzer[wijzer] ??= empty();
 
-    perKlas[klas] ??= { totaal: 0, aanwezig: 0 };
-    perWijzer[wijzer] ??= { totaal: 0, aanwezig: 0 };
+    const flags = byStudent.get(l.id) ?? {
+      fysiekAanwezig: false,
+      telefonischOnline: false,
+      afwezig: false,
+      opvangGebruikt: false,
+    };
+    const present = flags.fysiekAanwezig || flags.telefonischOnline;
 
-    perKlas[klas].totaal++;
-    perWijzer[wijzer].totaal++;
+    const bump = (s: Stat) => {
+      s.totaal += 1;
+      s.fysiekAanwezig += flags.fysiekAanwezig ? 1 : 0;
+      s.telefonischOnline += flags.telefonischOnline ? 1 : 0;
+      s.afwezig += flags.afwezig ? 1 : 0;
+      s.opvangGebruikt += flags.opvangGebruikt ? 1 : 0;
+      s.present += present ? 1 : 0;
+    };
 
-    if (aanwezigheden.some((a) => a.studentId === leerling.id && a.present)) {
-      perKlas[klas].aanwezig++;
-      perWijzer[wijzer].aanwezig++;
-    }
+    bump(totaal);
+    bump(perKlas[code]);
+    bump(perWijzer[wijzer]);
   }
 
-  // Transformeer naar arrays met percentages
-  const klasData = Object.entries(perKlas).map(([klas, stats]) => ({
-    klas,
-    ...stats,
-    percentage: stats.totaal
-      ? Math.round((stats.aanwezig / stats.totaal) * 100)
-      : 0,
-  }));
+  const klasEntries = Object.entries(perKlas).sort((a, b) => a[0].localeCompare(b[0]));
+  const wijzerEntries = Object.entries(perWijzer).sort((a, b) => a[0].localeCompare(b[0]));
 
-  const wijzerData = Object.entries(perWijzer).map(([wijzer, stats]) => ({
-    wijzer,
-    ...stats,
-    percentage: stats.totaal
-      ? Math.round((stats.aanwezig / stats.totaal) * 100)
-      : 0,
-  }));
+  const Th = ({ children }: { children: React.ReactNode }) => (
+    <th className="p-2 text-right font-medium">{children}</th>
+  );
+
+  const renderTable = (title: string, rows: [string, Stat][]) => (
+    <section>
+      <h2 className="font-medium mb-2">{title}</h2>
+      <div className="overflow-x-auto rounded border">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-slate-700">
+            <tr>
+              <th className="p-2 text-left font-medium">Groep</th>
+              <Th>Totaal</Th>
+              <Th>Fysiek</Th>
+              <Th>Tel/online</Th>
+              <Th>Afwezig</Th>
+              <Th>Opvang</Th>
+              <Th>Present (Fysiek∪Tel)</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map(([label, s]) => (
+              <tr key={label}>
+                <td className="p-2">{label}</td>
+                <td className="p-2 text-right">{s.totaal}</td>
+                <td className="p-2 text-right">{s.fysiekAanwezig}</td>
+                <td className="p-2 text-right">{s.telefonischOnline}</td>
+                <td className="p-2 text-right">{s.afwezig}</td>
+                <td className="p-2 text-right">{s.opvangGebruikt}</td>
+                <td className="p-2 text-right">{s.present}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-slate-50/60">
+            <tr>
+              <td className="p-2 font-medium">Totaal</td>
+              <td className="p-2 text-right">{totaal.totaal}</td>
+              <td className="p-2 text-right">{totaal.fysiekAanwezig}</td>
+              <td className="p-2 text-right">{totaal.telefonischOnline}</td>
+              <td className="p-2 text-right">{totaal.afwezig}</td>
+              <td className="p-2 text-right">{totaal.opvangGebruikt}</td>
+              <td className="p-2 text-right">{totaal.present}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+  );
 
   return (
-    <main className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">📊 Statistiek per klas</h1>
-
-      <table className="w-full border-collapse border border-gray-300 mb-8">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="border p-2 text-left">Klas</th>
-            <th className="border p-2 text-right">Aanwezig</th>
-            <th className="border p-2 text-right">Totaal</th>
-            <th className="border p-2 text-right">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {klasData.map(({ klas, aanwezig, totaal, percentage }) => (
-            <tr key={klas}>
-              <td className="border p-2">{klas}</td>
-              <td className="border p-2 text-right">{aanwezig}</td>
-              <td className="border p-2 text-right">{totaal}</td>
-              <td className="border p-2 text-right">{percentage}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <h2 className="text-xl font-bold mb-4">📈 Aanwezigheid per klas (%)</h2>
-      <StatistiekGrafiek
-        data={klasData.map(({ klas, percentage }) => ({ klas, percentage }))}
-      />
-
-      <h2 className="text-xl font-bold mt-10 mb-4">🧭 Samenvatting per wijzer</h2>
-      <table className="w-full border-collapse border border-gray-300">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="border p-2 text-left">Wijzer</th>
-            <th className="border p-2 text-right">Aanwezig</th>
-            <th className="border p-2 text-right">Totaal</th>
-            <th className="border p-2 text-right">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {wijzerData.map(({ wijzer, aanwezig, totaal, percentage }) => (
-            <tr key={wijzer}>
-              <td className="border p-2">{wijzer}</td>
-              <td className="border p-2 text-right">{aanwezig}</td>
-              <td className="border p-2 text-right">{totaal}</td>
-              <td className="border p-2 text-right">{percentage}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+    <div className="mx-auto max-w-4xl space-y-8">
+      <h1 className="text-xl font-semibold">Statistieken</h1>
+      {renderTable("Per klas", klasEntries)}
+      {renderTable("Per wijzer", wijzerEntries)}
+    </div>
   );
 }
