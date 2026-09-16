@@ -5,7 +5,7 @@ Een Next.js-applicatie waarmee je oudercontactmomenten kunt beheren en aanwezigh
 ## Functionaliteiten
 
 - Inloggen met Google (`@mpikompas.be`)
-- Leerlingen importeren vanuit WISA (CSV of API)
+- Leerlingen importeren vanuit informat (CSV of API)
 - Checklist per oudercontact met aanwezigheidsvinkje en opmerkingen
 - Filter op klas
 - Beheer van oudercontactmomenten
